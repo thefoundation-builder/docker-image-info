@@ -1,0 +1,68 @@
+#!/bin/bash
+
+set -o errexit
+
+main() {
+  check_args "$@"
+
+  local image=$1
+  local tag=$2
+  local token=$(get_token $image)
+  local old_config=$(get_old_config $image $tag $token)
+
+  get_image_configuration "$old_config"
+
+}
+
+get_image_configuration () {
+  local old_config=$1
+
+  echo "$old_config" | jq -r '.history[0].v1Compatibility' | jq '.container_config'
+}
+
+get_token() {
+  local image=$1
+
+  echo "Retrieving Docker Hub token.
+    IMAGE: $image
+  " >&2
+
+  curl \
+    --silent \
+    "https://auth.docker.io/token?scope=repository:$image:pull&service=registry.docker.io" \
+    | jq -r '.token'
+}
+
+get_old_config() {
+  local image=$1
+  local tag=$2
+  local token=$3
+
+  echo "Retrieving image digest.
+    IMAGE:  $image
+    TAG:    $tag
+    TOKEN:  $token
+  " >&2
+
+  curl \
+    --silent \
+    --header "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+    --header "Authorization: Bearer $token" \
+    "https://registry-1.docker.io/v2/$image/manifests/$tag" \
+    | jq -r '.'
+}
+
+check_args() {
+  if (($# != 2)); then
+    echo "Error:
+    Two arguments must be provided - $# provided.
+  
+    Usage:
+      ./get-image-config.sh <image> <tag>
+      
+Aborting."
+    exit 1
+  fi
+}
+
+main "$@"
